@@ -1,22 +1,18 @@
-FROM mcr.microsoft.com/dotnet/sdk:6.0 AS installer-env
+FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build-env
+WORKDIR /app
 
-# Build requires 3.1 SDK
-COPY --from=mcr.microsoft.com/dotnet/core/sdk:3.1 /usr/share/dotnet /usr/share/dotnet
+# Copy everything
+COPY ./ClassLibrary1 ./ClassLibrary1
+RUN cd ClassLibrary1
 
-COPY ./ClassLibrary1 /src/dotnet-function-app/ClassLibrary1
-RUN cd /src/dotnet-function-app/ClassLibrary1 && \
-    mkdir -p /home/site/wwwroot && \
-    dotnet publish *.csproj --output /home/site/wwwroot
+WORKDIR /app/ClassLibrary1
+# Restore as distinct layers
+RUN dotnet restore
+# Build and publish a release
+RUN dotnet publish -c Release -o /app/out
 
-COPY ./FunctionAppTest /src/dotnet-function-app/FunctionAppTest
-RUN cd /src/dotnet-function-app/FunctionAppTest && \
-    mkdir -p /home/site/wwwroot && \
-    dotnet publish *.csproj --output /home/site/wwwroot
-
-# To enable ssh & remote debugging on app service change the base image to the one below
-# FROM mcr.microsoft.com/azure-functions/dotnet:4-appservice
-FROM mcr.microsoft.com/azure-functions/dotnet:4
-ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
-    AzureFunctionsJobHost__Logging__Console__IsEnabled=true
-
-COPY --from=installer-env ["/home/site/wwwroot", "/home/site/wwwroot"]
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:6.0
+WORKDIR /app
+COPY --from=build-env /app/out .
+ENTRYPOINT ["dotnet", "ClassLibrary1.dll"]
